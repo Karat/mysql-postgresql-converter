@@ -33,6 +33,7 @@ def parse(input_filename, output_filename):
     cast_lines = []
     num_inserts = 0
     started = time.time()
+    types = set()
 
     # Open output file and write header. Logging file handle will be stdout
     # unless we're writing output to stdout, in which case NO PROGRESS FOR YOU.
@@ -104,6 +105,9 @@ def parse(input_filename, output_filename):
                 except ValueError:
                     type = definition.strip()
                     extra = ""
+
+                types.add(type)
+
                 extra = re.sub("CHARACTER SET [\w\d]+\s*", "", extra.replace("unsigned", ""))
                 extra = re.sub("COLLATE [\w\d]+\s*", "", extra.replace("unsigned", ""))
 
@@ -126,17 +130,21 @@ def parse(input_filename, output_filename):
                     type = "text"
                 elif type == "tinytext":
                     type = "text"
+                elif type == "text":
+                    # text is text
+                    pass
                 elif type.startswith("varchar("):
-                    size = int(type.split("(")[1].rstrip(")"))
-                    type = "varchar(%s)" % (size * 2)
+                    type = "text"
                 elif type.startswith("smallint("):
                     type = "int2"
                     set_sequence = True
                 elif type == "datetime":
-                    type = "timestamp with time zone"
-                elif type == "double":
+                    type = "timestamp without time zone"
+                elif type.startswith("double"):
                     type = "double precision"
-                elif type.endswith("blob"):
+                elif type.startswith("float"):
+                    type = "real"
+                elif "blob" in type:
                     type = "bytea"
                 elif type.startswith("enum(") or type.startswith("set("):
 
@@ -180,6 +188,7 @@ def parse(input_filename, output_filename):
                 pass
             # Is it the end of the table?
             elif line == ");":
+                output.write("\nDROP TABLE IF EXISTS \"%s\";\n" % current_table)
                 output.write("CREATE TABLE \"%s\" (\n" % current_table)
                 for i, line in enumerate(creation_lines):
                     output.write("    %s%s\n" % (line, "," if i != (len(creation_lines) - 1) else ""))
@@ -220,6 +229,7 @@ def parse(input_filename, output_filename):
     output.write("COMMIT;\n")
     print ""
 
+    print repr(types)
 
 if __name__ == "__main__":
     parse(sys.argv[1], sys.argv[2])
